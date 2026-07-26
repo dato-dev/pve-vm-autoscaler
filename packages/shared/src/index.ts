@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// Парсеры единиц измерения — часть контракта политики, поэтому живут здесь же.
+export * from "./units.js";
+
 export const nodeLabelsSchema = z.record(z.string(), z.string());
 
 export const nodeIdentitySchema = z.object({
