@@ -1,3 +1,11 @@
+## [1.0.1](https://github.com/dato-dev/pve-vm-autoscaler/compare/v1.0.0...v1.0.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **metrics:** отвечать 400 на невалидный payload вместо 500 ([eb4f0a7](https://github.com/dato-dev/pve-vm-autoscaler/commit/eb4f0a79eac465d2c927e4e832f7fb61d6f8add9))
+* **server:** обрывать запрос на 401 и сравнивать токен за постоянное время ([7545ee2](https://github.com/dato-dev/pve-vm-autoscaler/commit/7545ee2f5077e307a749d479932e793bdfb34ce4))
+
 # [1.0.0](https://github.com/dato-dev/pve-vm-autoscaler/compare/v0.1.2...v1.0.0) (2026-07-26)
 
 
