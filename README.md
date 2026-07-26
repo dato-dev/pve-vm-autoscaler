@@ -123,7 +123,7 @@ sequenceDiagram
 - `apps/server`: Fastify API, auth, миграции БД, evaluator и scaling events.
 - `packages/shared`: Zod-схемы и TypeScript-типы для контрактов.
 - `packages/proxmox`: клиент Proxmox API с dry-run, clone/start flow и polling task.
-- `infra/policy.example.json`: пример scaling policy.
+- `infra/policy.example.yaml`: пример scaling policy.
 
 ## Локальный запуск
 
@@ -241,14 +241,53 @@ journalctl -u pve-vm-autoscaler-agent -f
 
 ## Конфигурация policy
 
-Пример находится в `infra/policy.example.json`. Главные параметры:
+Пример — [`infra/policy.example.yaml`](infra/policy.example.yaml). Файл разделён по частоте
+изменения: `nodeTemplates` описывает, **что** создавать, и правится редко; `policies` описывает,
+**когда** масштабировать, и тюнится постоянно. Один шаблон могут использовать несколько политик.
 
-- `evaluationWindowSeconds`: окно оценки, например `120` секунд.
-- `thresholds.cpuPercent` и `thresholds.memoryPercent`: пороги scale-up.
-- `cooldownSeconds`: пауза между scaling events по одной policy.
-- `minNodes` и `maxNodes`: границы количества known nodes.
-- `selector.labels`: какие агенты участвуют в policy.
-- `proxmox`: target node, template VM ID, CPU/RAM/disk и стратегия clone.
+```yaml
+version: 1
+
+nodeTemplates:
+  worker:
+    hypervisor: proxmox      # нода Proxmox, а не воркер-VM
+    templateVmId: 100
+    cpu: 2                   # ядра
+    memory: 2Gi
+    disk: 20Gi
+    diskDevice: virtio0
+
+policies:
+  - name: default-workers
+    template: worker
+    selector:
+      role: worker
+    nodes: { min: 1, max: 5 }
+    window: 2m               # окно усреднения нагрузки
+    scaleUp:
+      cpu: 60%
+      memory: 80%
+      cooldown: 5m
+```
+
+Единица измерения видна в самом значении: `5m` и `1h30m` для длительностей, `2Gi` и `512Mi`
+для объёмов, `60%` для порогов. Знак процента обязателен — в файле рядом стоят `cpu: 2` (ядра)
+и `cpu: 60%` (порог), и без суффикса они читались бы одинаково.
+
+Проверить файл, не поднимая сервер и не требуя базы:
+
+```bash
+npm run policy:validate -- infra/policy.example.yaml
+```
+
+Перевести политику старого формата (плоский JSON до версии 1) в новый:
+
+```bash
+npm run policy:convert -- old-policy.json > policy.yaml
+```
+
+Конвертер валидирует результат перед выводом. Значения переносятся без потери смысла:
+`memoryMb: 2048` становится `memory: 2048Mi`, а не мегабайтами.
 
 ## Proxmox
 
