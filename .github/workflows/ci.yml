@@ -34,8 +34,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # cache: npm требует package-lock.json, которого в репозитории пока
-          # нет (M1.10a). Включить одной строкой вместе с локом.
+          cache: npm
 
       - run: ./.github/install-deps.sh
 
@@ -55,6 +54,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - run: ./.github/install-deps.sh
 
@@ -108,6 +108,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - run: ./.github/install-deps.sh
 
