@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-// Парсеры единиц измерения — часть контракта политики, поэтому живут здесь же.
+// Парсеры единиц измерения и схема политики — часть контракта, поэтому живут здесь же.
 export * from "./units.js";
+export * from "./policy.js";
 
 export const nodeLabelsSchema = z.record(z.string(), z.string());
 
