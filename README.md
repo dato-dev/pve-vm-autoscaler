@@ -192,7 +192,10 @@ curl http://<your-lan-ip>:8080/health
 4. Скопируй проект на VM:
 
 ```bash
-rsync -a --exclude node_modules --exclude dist ./ root@<vm-ip>:/tmp/pve-vm-autoscaler/
+rsync -a \
+  --exclude node_modules --exclude dist --exclude .git --exclude .env \
+  --exclude '*.tsbuildinfo' \
+  ./ root@<vm-ip>:/tmp/pve-vm-autoscaler/
 ```
 
 5. На VM установи агент как systemd service:
