@@ -9,11 +9,11 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
-    "@pve-vm-autoscaler/proxmox": "0.1.0",
-    "@pve-vm-autoscaler/shared": "0.1.0",
-    "dotenv": "latest",
-    "fastify": "latest",
-    "pg": "latest"
+    "@pve-vm-autoscaler/proxmox": "*",
+    "@pve-vm-autoscaler/shared": "*",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.0",
+    "pg": "^8.13.1"
   },
   "devDependencies": {}
 }

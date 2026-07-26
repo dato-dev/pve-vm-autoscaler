@@ -14,7 +14,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "undici": "latest"
+    "undici": "^7.2.0"
   },
   "devDependencies": {}
 }

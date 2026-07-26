@@ -34,11 +34,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          # cache: npm намеренно не включён: он требует package-lock.json,
-          # которого в репозитории пока нет (M1.10). Включить вместе с lockfile.
+          # cache: npm требует package-lock.json, которого в репозитории пока
+          # нет (M1.10a). Включить одной строкой вместе с локом.
 
-      # npm ci нельзя — нет lockfile. Заменить на npm ci в рамках M1.10.
-      - run: npm install
+      - run: ./.github/install-deps.sh
 
       - run: npm run build
       - run: npm test
@@ -57,7 +56,7 @@ jobs:
         with:
           node-version: 22
 
-      - run: npm install
+      - run: ./.github/install-deps.sh
 
       - name: Проверить формат сообщений
         env:
@@ -110,7 +109,7 @@ jobs:
         with:
           node-version: 22
 
-      - run: npm install
+      - run: ./.github/install-deps.sh
 
       - run: npx --no -- semantic-release
         env:

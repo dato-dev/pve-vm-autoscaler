@@ -8,8 +8,8 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@pve-vm-autoscaler/shared": "0.1.0",
-    "dotenv": "latest"
+    "@pve-vm-autoscaler/shared": "*",
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {}
 }
