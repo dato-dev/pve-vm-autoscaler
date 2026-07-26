@@ -1,3 +1,25 @@
+# [2.0.0](https://github.com/dato-dev/pve-vm-autoscaler/compare/v1.0.3...v2.0.0) (2026-07-26)
+
+
+* feat(policy)!: перевести конфигурацию на YAML с шаблонами машин ([bc2dca5](https://github.com/dato-dev/pve-vm-autoscaler/commit/bc2dca584a8ae1799ec8bda69f48598c22317013))
+
+
+### Features
+
+* **shared:** добавить парсеры duration, quantity и percent ([7c2ae3a](https://github.com/dato-dev/pve-vm-autoscaler/commit/7c2ae3a7e3ee9485746e06751beb373a78fe9809))
+* **shared:** добавить схему политики с шаблонами машин ([5095040](https://github.com/dato-dev/pve-vm-autoscaler/commit/5095040202ce49c0f923fe94c51d951a71d34162))
+
+
+### BREAKING CHANGES
+
+* infra/policy.example.json заменён на policy.example.yaml
+со сменой структуры. nodeTemplates отделены от policies и связаны по
+имени; targetNode стал hypervisor, minNodes и maxNodes — nodes.min и
+nodes.max, selector.labels — плоским selector, thresholds — секцией
+scaleUp. Длительности записываются строками (5m, 1h30m), объёмы —
+2Gi и 20Gi, пороги — 60% со знаком процента. Поле version: 1
+обязательно. Конвертация: npm run policy:convert -- old.json > policy.yaml
+
 ## [1.0.3](https://github.com/dato-dev/pve-vm-autoscaler/compare/v1.0.2...v1.0.3) (2026-07-26)
 
 
