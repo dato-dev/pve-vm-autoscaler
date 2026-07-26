@@ -159,6 +159,105 @@ describe("AutoscalerRepository.saveMetric", () => {
   });
 });
 
+describe("AutoscalerRepository.getWindowAverages", () => {
+  function averagesRow(overrides: Record<string, unknown> = {}) {
+    return {
+      observed_nodes: "3",
+      cpu_percent: 42.5,
+      memory_percent: 55,
+      disk_percent: 30,
+      ...overrides
+    };
+  }
+
+  it("усредняет сначала по ноде, затем по нодам", async () => {
+    const pool = new FakePool();
+    pool.respondWith = [{ match: "per_node", rows: [averagesRow()] }];
+
+    await buildRepository(pool).getWindowAverages({ role: "worker" }, 120);
+
+    const sql = pool.queries[0]?.sql ?? "";
+    // Регрессия: плоский avg() по всем строкам взвешивал ноды по числу сэмплов —
+    // нода, поднявшаяся минуту назад, влияла на решение слабее старожилов.
+    expect(sql).toContain("GROUP BY metrics.node_id");
+    expect(sql).toMatch(/WITH\s+per_node/);
+    expect(sql).toContain("FROM per_node");
+  });
+
+  it("передаёт окно и метки параметрами запроса", async () => {
+    const pool = new FakePool();
+    pool.respondWith = [{ match: "per_node", rows: [averagesRow()] }];
+
+    await buildRepository(pool).getWindowAverages({ role: "worker", env: "prod" }, 300);
+
+    expect(pool.queries[0]?.values).toEqual([
+      300,
+      JSON.stringify({ role: "worker", env: "prod" })
+    ]);
+  });
+
+  it("возвращает средние и число нод", async () => {
+    const pool = new FakePool();
+    pool.respondWith = [{ match: "per_node", rows: [averagesRow()] }];
+
+    const averages = await buildRepository(pool).getWindowAverages({}, 120);
+
+    expect(averages).toEqual({
+      observedNodes: 3,
+      cpuPercent: 42.5,
+      memoryPercent: 55,
+      diskPercent: 30
+    });
+  });
+
+  it("сохраняет null как «данных нет», а не как нулевую нагрузку", async () => {
+    // Пустое окно: count(*) даёт 0, а avg() по пустому множеству — NULL.
+    // Подмена null на 0 заставила бы evaluator считать, что ноды простаивают.
+    const pool = new FakePool();
+    pool.respondWith = [
+      {
+        match: "per_node",
+        rows: [
+          averagesRow({
+            observed_nodes: "0",
+            cpu_percent: null,
+            memory_percent: null,
+            disk_percent: null
+          })
+        ]
+      }
+    ];
+
+    const averages = await buildRepository(pool).getWindowAverages({}, 120);
+
+    expect(averages).toEqual({
+      observedNodes: 0,
+      cpuPercent: null,
+      memoryPercent: null,
+      diskPercent: null
+    });
+  });
+
+  it("не падает, если строк не вернулось вовсе", async () => {
+    const pool = new FakePool();
+
+    await expect(buildRepository(pool).getWindowAverages({}, 120)).resolves.toEqual({
+      observedNodes: 0,
+      cpuPercent: null,
+      memoryPercent: null,
+      diskPercent: null
+    });
+  });
+
+  it("пробрасывает ошибку базы", async () => {
+    const pool = new FakePool();
+    const failure = new Error("statement timeout");
+    pool.failOn = { match: "per_node", error: failure };
+
+    await expect(buildRepository(pool).getWindowAverages({}, 120)).rejects.toThrow(failure);
+  });
+});
+
 describe("AutoscalerRepository.countKnownNodes", () => {
   /** Единственный запрос, отправленный в этом тесте. */
   function onlyQuery(pool: FakePool): RecordedQuery {

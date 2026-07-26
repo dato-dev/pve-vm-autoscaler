@@ -109,6 +109,28 @@ export class AutoscalerRepository {
     }
   }
 
+  /**
+   * Считает среднюю нагрузку по нодам, подходящим под селектор, за окно оценки.
+   *
+   * Агрегация двухуровневая: сначала среднее по каждой ноде, затем среднее по нодам.
+   * Плоский `avg()` по всем строкам взвешивал бы ноды по количеству присланных сэмплов —
+   * нода, поднявшаяся 20 секунд назад, дала бы пару строк, а работающая час — десятки,
+   * и решение принималось бы в основном по старожилам.
+   *
+   * **Выбор статистики.** Берётся среднее арифметическое по нодам. Это осознанный
+   * компромисс, корректный для однородного пула с равномерно распределяемой работой.
+   * Среднее прячет перекос: одна нода на 100% и три на 20% дают 40%, и порог 80%
+   * не сработает, хотя одна машина уже стоит колом. Альтернативы (доля нод выше порога,
+   * p95) лежат в бэклоге ROADMAP — менять статистику нужно вместе с формой политики,
+   * иначе оператор не сможет выразить, чего он хочет.
+   *
+   * `null` в средних означает «данных нет», а не «нагрузка нулевая»:
+   * `evaluateScalingDecision` различает эти случаи и на `null` не масштабирует.
+   *
+   * @param labels Метки из `selector` политики.
+   * @param windowSeconds Ширина окна оценки в секундах.
+   * @returns Средние по нодам и число нод, приславших хотя бы один сэмпл в окне.
+   */
   async getWindowAverages(labels: NodeLabels, windowSeconds: number): Promise<WindowAverages> {
     const result = await this.pool.query<{
       observed_nodes: string;
@@ -117,15 +139,24 @@ export class AutoscalerRepository {
       disk_percent: number | null;
     }>(
       `
+      WITH per_node AS (
+        SELECT
+          metrics.node_id,
+          avg(metrics.cpu_percent) AS cpu_percent,
+          avg(metrics.memory_percent) AS memory_percent,
+          avg(metrics.disk_percent) AS disk_percent
+        FROM metrics
+        JOIN nodes ON nodes.node_id = metrics.node_id
+        WHERE metrics.time >= now() - ($1::int * interval '1 second')
+          AND nodes.labels @> $2::jsonb
+        GROUP BY metrics.node_id
+      )
       SELECT
-        count(DISTINCT metrics.node_id) AS observed_nodes,
+        count(*) AS observed_nodes,
         avg(cpu_percent) AS cpu_percent,
         avg(memory_percent) AS memory_percent,
         avg(disk_percent) AS disk_percent
-      FROM metrics
-      JOIN nodes ON nodes.node_id = metrics.node_id
-      WHERE metrics.time >= now() - ($1::int * interval '1 second')
-        AND nodes.labels @> $2::jsonb
+      FROM per_node
       `,
       [windowSeconds, JSON.stringify(labels)]
     );
