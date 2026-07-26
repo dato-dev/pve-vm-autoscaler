@@ -75,12 +75,24 @@ tar \
   --exclude dist \
   --exclude .git \
   --exclude .env \
+  --exclude '*.tsbuildinfo' \
   -C "$SOURCE_DIR" \
   -cf - . | tar -C "$INSTALL_DIR" -xf -
 
 cd "$INSTALL_DIR"
 unset NODE_OPTIONS
-npm install
+
+# husky ставит git-хуки и на целевой машине не нужен: каталог .git сюда не копируется,
+# а без этого скрипт prepare падает и обрывает установку.
+export HUSKY=0
+
+# npm ci воспроизводим, но требует локфайл: если его нет, откатываемся на npm install.
+if [[ -f package-lock.json ]]; then
+  npm ci
+else
+  npm install
+fi
+
 npm run build
 
 cat > "$ENV_DIR/agent.env" <<EOF
