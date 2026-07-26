@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/dato-dev/pve-vm-autoscaler/compare/v1.0.2...v1.0.3) (2026-07-26)
+
+
+### Bug Fixes
+
+* **db:** усреднять нагрузку по нодам, а не по строкам метрик ([ecafc7c](https://github.com/dato-dev/pve-vm-autoscaler/commit/ecafc7cdbcee393b04bd5234c20c147e9a065762))
+
 ## [1.0.2](https://github.com/dato-dev/pve-vm-autoscaler/compare/v1.0.1...v1.0.2) (2026-07-26)
 
 
