@@ -181,6 +181,9 @@ flowchart TB
       чтобы semantic-release считал версии от него, а не начинал с `1.0.0`.
       Попутно исправлен `eslint.config.js`: `ignores` в одном объекте с `rules` не работал
       как глобальный игнор, и `lint` после `build` пошёл бы по `dist/**`.
+      В CI выставлен `HUSKY=0`, а `chore(release):` внесён в `ignores` commitlint —
+      иначе хук `commit-msg` блокирует коммит, который semantic-release делает сам
+      (в теле сгенерированные release notes длиннее `body-max-line-length`).
 - [ ] **M1.10** Зафиксировать зависимости: заменить `"latest"` на диапазоны, закоммитить
       `package-lock.json`, включить `cache: npm` в `setup-node` и заменить `npm install`
       на `npm ci` в CI. *(L26)*

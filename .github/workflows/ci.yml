@@ -9,6 +9,14 @@ on:
 permissions:
   contents: read
 
+env:
+  # Git-хуки husky нужны только на машине разработчика. В CI они вредны:
+  # @semantic-release/git делает свой коммит `chore(release): ...`, тот проходит
+  # через commit-msg и падает на сгенерированных release notes — длинные строки
+  # со ссылками не проходят body-max-line-length. Формат коммитов в CI проверяет
+  # отдельный job commitlint, а не хук.
+  HUSKY: 0
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

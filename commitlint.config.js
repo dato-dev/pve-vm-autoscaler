@@ -8,6 +8,14 @@
  */
 export default {
   extends: ["@commitlint/config-conventional"],
+
+  /**
+   * Коммиты, которые semantic-release создаёт сам, проверять человеческими
+   * правилами незачем: в их теле лежат сгенерированные release notes —
+   * markdown-ссылки на коммиты, заведомо длиннее лимита строки.
+   */
+  ignores: [(message) => /^chore\(release\):/.test(message)],
+
   rules: {
     "type-enum": [
       2,
