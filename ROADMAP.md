@@ -121,7 +121,7 @@ flowchart TB
 | L2 | **Provisioning-ноды не учитываются в `maxNodes`.** | При долгом старте VM и коротком cooldown создаются лишние VM. | M3 |
 | L3 | **`countKnownNodes` не фильтрует по `last_seen_at`.** | Мёртвая нода считается вечно, автоскейлер перестаёт масштабировать. | M1.3 |
 | L4 | **`countKnownNodes` тянет всю таблицу `nodes` в память.** | Не масштабируется, игнорирует GIN-индекс. | M1.3 |
-| L5 | **Транзакция в `saveMetric` через `pool.query("BEGIN")`.** | Пул выдаёт разные соединения — атомарности нет. | M1.2 |
+| ~~L5~~ | ~~**Транзакция в `saveMetric` через `pool.query("BEGIN")`.**~~ Закрыто в M1.2. | — | ✅ |
 | L6 | **Один статический общий токен, сравнение не constant-time.** | Компрометация одного агента = компрометация всех. | M1.4, M8.1 |
 | ~~L7~~ | ~~**Секрет Proxmox в `docker-compose.yml`.**~~ Устранено в M1.1 до первого коммита. | В git-историю не попало. Остаётся ротация токена. | M1.1a |
 | L8 | **Нет retention/compression** на hypertable `metrics`. | Неограниченный рост БД. | M6.4 |
@@ -164,7 +164,10 @@ flowchart TB
       в `docker-compose.yml` в открытом виде. Файл в git не публиковался, но лежал в открытом виде
       в `~/Documents` — если каталог синхронизируется в облако или попадает в бэкапы,
       считать токен скомпрометированным. Отзыв: Datacenter → Permissions → API Tokens.
-- [ ] **M1.2** Починить транзакцию в `saveMetric`: `pool.connect()` → `client.query` → `client.release()`. *(L5)*
+- [x] **M1.2** Починить транзакцию в `saveMetric`: `pool.connect()` → `client.query` → `client.release()`
+      в `finally`. Ошибка самого `ROLLBACK` глотается, чтобы не подменять причину сбоя.
+      Тесты на фейковом пуле проверяют, что все запросы транзакции идут по одному
+      соединению и что оно возвращается в пул на любом пути. *(L5)*
 - [ ] **M1.3** Переписать `countKnownNodes` на SQL с `labels @> $1::jsonb` и фильтром
       `last_seen_at >= now() - interval`. Ввести `nodeStaleAfterSeconds` в policy. *(L3, L4, L15)*
 - [ ] **M1.4** Constant-time сравнение токена (`crypto.timingSafeEqual`), `return reply` в auth-hook. *(L6)*

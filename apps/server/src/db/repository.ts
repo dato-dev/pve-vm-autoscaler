@@ -21,10 +21,25 @@ export interface ScalingEventRecord {
 export class AutoscalerRepository {
   constructor(private readonly pool: DatabasePool) {}
 
+  /**
+   * Сохраняет снимок метрик: upsert ноды и вставку строки метрик одной транзакцией.
+   *
+   * Оба запроса идут по ОДНОМУ соединению, взятому через `pool.connect()`.
+   * Через `pool.query()` так делать нельзя: пул выдаёт соединение на каждый вызов
+   * заново, поэтому BEGIN, INSERT и COMMIT могут уйти в разные соединения. Транзакции
+   * в этом случае нет вообще, а соединение с незакрытым BEGIN возвращается в пул
+   * грязным (`idle in transaction`) — оно держит блокировки и со временем исчерпывает пул.
+   *
+   * @param snapshot Валидированный снимок метрик от агента.
+   * @throws Ошибку любого из запросов — предварительно откатив транзакцию и вернув соединение.
+   */
   async saveMetric(snapshot: MetricSnapshot): Promise<void> {
-    await this.pool.query("BEGIN");
+    const client = await this.pool.connect();
+
     try {
-      await this.pool.query(
+      await client.query("BEGIN");
+
+      await client.query(
         `
         INSERT INTO nodes (node_id, hostname, agent_version, labels, last_seen_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, now())
@@ -44,7 +59,7 @@ export class AutoscalerRepository {
         ]
       );
 
-      await this.pool.query(
+      await client.query(
         `
         INSERT INTO metrics (
           time,
@@ -79,10 +94,18 @@ export class AutoscalerRepository {
         ]
       );
 
-      await this.pool.query("COMMIT");
+      await client.query("COMMIT");
     } catch (error) {
-      await this.pool.query("ROLLBACK");
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        // Соединение могло уже оборваться — тогда откат не пройдёт.
+        // Ошибка отката не должна подменять причину сбоя: наружу уходит исходная.
+      }
       throw error;
+    } finally {
+      // release() обязателен в любом исходе, иначе соединение утечёт из пула.
+      client.release();
     }
   }
 
