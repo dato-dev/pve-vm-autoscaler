@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/dato-dev/pve-vm-autoscaler/compare/v2.0.0...v2.0.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **scripts:** не зависеть от кэша сборки при установке агента ([cef4f4d](https://github.com/dato-dev/pve-vm-autoscaler/commit/cef4f4d0f6d1ff661152f20e4b270cbc64a91e6b))
+
 # [2.0.0](https://github.com/dato-dev/pve-vm-autoscaler/compare/v1.0.3...v2.0.0) (2026-07-26)
 
 
