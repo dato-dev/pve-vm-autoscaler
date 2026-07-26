@@ -121,6 +121,22 @@ export interface ResolvedScalingPolicy extends Omit<PolicyEntry, "template"> {
 }
 
 /**
+ * Превращает ошибки валидации в строки, пригодные для показа оператору.
+ *
+ * Zod по умолчанию отдаёт дерево issue без указания места в файле. Оператору нужен
+ * путь до поля и текст, объясняющий, как записать значение верно.
+ *
+ * @param error Ошибка разбора файла политик.
+ * @returns Строки вида `policies.0.scaleUp.cpu: процент записывается со знаком «%»…`.
+ */
+export function formatPolicyIssues(error: z.ZodError): string[] {
+  return error.issues.map((issue) => {
+    const path = issue.path.join(".");
+    return path === "" ? issue.message : `${path}: ${issue.message}`;
+  });
+}
+
+/**
  * Подставляет шаблоны в политики и переводит величины в единицы Proxmox.
  *
  * @param file Разобранный и провалидированный файл политик.

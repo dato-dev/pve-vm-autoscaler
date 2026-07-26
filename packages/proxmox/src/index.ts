@@ -19,12 +19,17 @@ export interface ProxmoxClientOptions {
 }
 
 export interface CreateVmRequest {
+  /** Нода Proxmox, на которой создаётся VM. */
   targetNode: string;
   templateVmId: number;
   name: string;
   cpuCores: number;
-  memoryMb: number;
-  diskGb?: number;
+  /** Объём памяти в мебибайтах — в этих единицах его принимает Proxmox API. */
+  memoryMib: number;
+  /** Размер диска строкой вида `20G`; если не задан, resize не выполняется. */
+  diskSize?: string;
+  /** Имя диска для resize: virtio0, scsi0, sata0 — зависит от шаблона. */
+  diskDevice: string;
   pool?: string;
   storage?: string;
   linkedClone: boolean;
@@ -109,18 +114,19 @@ export class ProxmoxClient {
       vmId,
       targetNode: request.targetNode,
       cpuCores: request.cpuCores,
-      memoryMb: request.memoryMb,
+      memoryMib: request.memoryMib,
       tags: request.tags
     }, "Proxmox VM configured");
 
     let startTaskId: string | undefined;
-    if (request.diskGb) {
+    if (request.diskSize) {
       await this.resizeDisk(vmId, request);
       this.options.logger?.info({
         event: "proxmox.vm.disk_resized",
         vmId,
         targetNode: request.targetNode,
-        diskGb: request.diskGb
+        diskDevice: request.diskDevice,
+        diskSize: request.diskSize
       }, "Proxmox VM disk resized");
     }
 
@@ -236,7 +242,8 @@ export class ProxmoxClient {
   private async configureVm(vmId: number, request: CreateVmRequest): Promise<void> {
     const body = new URLSearchParams({
       cores: String(request.cpuCores),
-      memory: String(request.memoryMb),
+      // Параметр memory Proxmox принимает в мебибайтах.
+      memory: String(request.memoryMib),
       tags: request.tags.join(";")
     });
 
@@ -248,8 +255,9 @@ export class ProxmoxClient {
 
   private async resizeDisk(vmId: number, request: CreateVmRequest): Promise<void> {
     const body = new URLSearchParams({
-      disk: "virtio0",
-      size: `${request.diskGb}G`
+      // Имя диска приходит из шаблона машины: virtio0 подходит не всем образам.
+      disk: request.diskDevice,
+      size: request.diskSize ?? ""
     });
 
     await this.request<unknown>(

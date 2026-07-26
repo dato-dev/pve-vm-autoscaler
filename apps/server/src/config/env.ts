@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { readFileSync } from "node:fs";
-import { scalingPolicySchema, type ScalingPolicy } from "@pve-vm-autoscaler/shared";
+import type { ResolvedScalingPolicy } from "@pve-vm-autoscaler/shared";
+import { loadPolicyFile } from "./policyLoader.js";
 
 export interface ServerConfig {
   host: string;
@@ -8,7 +8,7 @@ export interface ServerConfig {
   databaseUrl: string;
   agentToken: string;
   evaluationIntervalMs: number;
-  policies: ScalingPolicy[];
+  policies: ResolvedScalingPolicy[];
   proxmox: {
     dryRun: boolean;
     baseUrl: string;
@@ -18,16 +18,10 @@ export interface ServerConfig {
   };
 }
 
-function loadPolicies(policyFile: string): ScalingPolicy[] {
-  const raw = JSON.parse(readFileSync(policyFile, "utf8")) as unknown;
-  const policies = Array.isArray(raw) ? raw : [raw];
-  return policies.map((policy) => scalingPolicySchema.parse(policy));
-}
-
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const databaseUrl = env.DATABASE_URL;
   const agentToken = env.AGENT_TOKEN;
-  const policyFile = env.POLICY_FILE ?? "./infra/policy.example.json";
+  const policyFile = env.POLICY_FILE ?? "./infra/policy.example.yaml";
 
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required");
@@ -43,7 +37,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     databaseUrl,
     agentToken,
     evaluationIntervalMs: Number(env.EVALUATION_INTERVAL_MS ?? 15_000),
-    policies: loadPolicies(policyFile),
+    policies: loadPolicyFile(policyFile),
     proxmox: {
       dryRun: env.PROXMOX_DRY_RUN !== "false",
       baseUrl: env.PROXMOX_BASE_URL ?? "",

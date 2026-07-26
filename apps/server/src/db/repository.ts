@@ -11,7 +11,8 @@ export interface WindowAverages {
 
 export interface ScalingEventRecord {
   id: string;
-  policyId: string;
+  /** Имя политики. В БД хранится в колонке policy_id — колонку не переименовываем. */
+  policyName: string;
   status: string;
   reason: string;
   proxmoxTaskId?: string;
@@ -204,7 +205,7 @@ export class AutoscalerRepository {
     return Number(result.rows[0]?.known_nodes ?? 0);
   }
 
-  async getLastScalingEvent(policyId: string, cooldownSeconds: number): Promise<ScalingEventRecord | null> {
+  async getLastScalingEvent(policyName: string, cooldownSeconds: number): Promise<ScalingEventRecord | null> {
     const result = await this.pool.query<{
       id: string;
       policy_id: string;
@@ -221,7 +222,7 @@ export class AutoscalerRepository {
       ORDER BY created_at DESC
       LIMIT 1
       `,
-      [policyId, cooldownSeconds]
+      [policyName, cooldownSeconds]
     );
 
     const row = result.rows[0];
@@ -231,7 +232,7 @@ export class AutoscalerRepository {
 
     return {
       id: row.id,
-      policyId: row.policy_id,
+      policyName: row.policy_id,
       status: row.status,
       reason: row.reason,
       proxmoxTaskId: row.proxmox_task_id ?? undefined,
@@ -246,12 +247,12 @@ export class AutoscalerRepository {
       INSERT INTO scaling_events (id, policy_id, status, reason, decision)
       VALUES ($1, $2, $3, $4, $5)
       `,
-      [id, decision.policyId, status, decision.reason, JSON.stringify(decision)]
+      [id, decision.policyName, status, decision.reason, JSON.stringify(decision)]
     );
 
     return {
       id,
-      policyId: decision.policyId,
+      policyName: decision.policyName,
       status,
       reason: decision.reason
     };

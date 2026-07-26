@@ -1,4 +1,4 @@
-import type { ScalingPolicy } from "@pve-vm-autoscaler/shared";
+import type { ResolvedScalingPolicy } from "@pve-vm-autoscaler/shared";
 
 export interface ProvisionedNode {
   vmId?: number;
@@ -14,5 +14,5 @@ export interface StructuredLogger {
 }
 
 export interface ScaleProvisioner {
-  createNode(policy: ScalingPolicy, reason: string): Promise<ProvisionedNode>;
+  createNode(policy: ResolvedScalingPolicy, reason: string): Promise<ProvisionedNode>;
 }

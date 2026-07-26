@@ -27,7 +27,7 @@ services:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8080
       DATABASE_URL: postgres://autoscaler:autoscaler@timescaledb:5432/autoscaler
-      POLICY_FILE: /app/infra/policy.example.json
+      POLICY_FILE: /app/infra/policy.example.yaml
       # Значения подставляются из .env (docker compose читает его автоматически).
       # Секреты в этот файл не пишем — он под git, .env в .gitignore.
       AGENT_TOKEN: ${AGENT_TOKEN:?AGENT_TOKEN is required, see .env.example}

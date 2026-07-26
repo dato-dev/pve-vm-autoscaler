@@ -34,39 +34,9 @@ export const metricSnapshotSchema = z.object({
   })
 });
 
-export const scalingPolicySchema = z.object({
-  id: z.string().min(1),
-  enabled: z.boolean().default(true),
-  sampleIntervalSeconds: z.number().int().positive().default(15),
-  evaluationWindowSeconds: z.number().int().positive().default(120),
-  cooldownSeconds: z.number().int().nonnegative().default(300),
-  minNodes: z.number().int().nonnegative().default(1),
-  maxNodes: z.number().int().positive().default(10),
-  thresholds: z.object({
-    cpuPercent: z.number().min(0).max(100).default(80),
-    memoryPercent: z.number().min(0).max(100).default(80),
-    diskPercent: z.number().min(0).max(100).optional()
-  }),
-  selector: z.object({
-    labels: nodeLabelsSchema.default({})
-  }).default({ labels: {} }),
-  proxmox: z.object({
-    targetNode: z.string().min(1),
-    templateVmId: z.number().int().positive(),
-    vmNamePrefix: z.string().min(1).default("autoscaled"),
-    cpuCores: z.number().int().positive().default(2),
-    memoryMb: z.number().int().positive().default(2048),
-    diskGb: z.number().int().positive().optional(),
-    pool: z.string().optional(),
-    storage: z.string().optional(),
-    linkedClone: z.boolean().default(true),
-    startOnCreate: z.boolean().default(true),
-    tags: z.array(z.string()).default(["pve-vm-autoscaler"])
-  })
-});
-
 export const scalingDecisionSchema = z.object({
-  policyId: z.string(),
+  /** Имя политики из файла конфигурации. В БД хранится в колонке policy_id. */
+  policyName: z.string(),
   shouldScale: z.boolean(),
   reason: z.string(),
   observedNodes: z.number().int().nonnegative(),
@@ -80,7 +50,7 @@ export const scalingDecisionSchema = z.object({
 
 export const scalingEventSchema = z.object({
   id: z.string(),
-  policyId: z.string(),
+  policyName: z.string(),
   status: z.enum(["pending", "running", "succeeded", "failed", "dry_run"]),
   reason: z.string(),
   proxmoxTaskId: z.string().optional(),
@@ -92,7 +62,6 @@ export const scalingEventSchema = z.object({
 export type NodeLabels = z.infer<typeof nodeLabelsSchema>;
 export type NodeIdentity = z.infer<typeof nodeIdentitySchema>;
 export type MetricSnapshot = z.infer<typeof metricSnapshotSchema>;
-export type ScalingPolicy = z.infer<typeof scalingPolicySchema>;
 export type ScalingDecision = z.infer<typeof scalingDecisionSchema>;
 export type ScalingEvent = z.infer<typeof scalingEventSchema>;
 

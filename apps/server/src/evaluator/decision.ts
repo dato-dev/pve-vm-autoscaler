@@ -1,8 +1,26 @@
-import { type ScalingDecision, type ScalingPolicy } from "@pve-vm-autoscaler/shared";
+import { type ResolvedScalingPolicy, type ScalingDecision } from "@pve-vm-autoscaler/shared";
 import type { WindowAverages } from "../db/repository.js";
 
+/**
+ * Решает, нужно ли добавить ноду.
+ *
+ * Функция чистая: никакого I/O, а момент оценки приходит параметром — иначе тесты
+ * стали бы недетерминированными.
+ *
+ * **Порядок проверок значим.** Выключенная политика и активный cooldown отсекаются
+ * раньше порогов: cooldown существует именно чтобы не реагировать на нагрузку, поэтому
+ * проверять пороги перед ним бессмысленно. `nodes.max` проверяется раньше `nodes.min`,
+ * чтобы конфликтующие границы не приводили к бесконечному росту.
+ *
+ * @param policy Политика с уже подставленным шаблоном машины.
+ * @param averages Средние по нодам за окно оценки.
+ * @param knownNodes Число живых нод, подходящих под селектор.
+ * @param cooldownActive Есть ли недавнее событие масштабирования по этой политике.
+ * @param evaluatedAt Момент оценки; по умолчанию текущее время.
+ * @returns Решение с человекочитаемой причиной — она попадает в лог и в scaling event.
+ */
 export function evaluateScalingDecision(
-  policy: ScalingPolicy,
+  policy: ResolvedScalingPolicy,
   averages: WindowAverages,
   knownNodes: number,
   cooldownActive: boolean,
@@ -14,104 +32,50 @@ export function evaluateScalingDecision(
     diskPercent: averages.diskPercent
   };
 
-  if (!policy.enabled) {
-    return {
-      policyId: policy.id,
-      shouldScale: false,
-      reason: "policy is disabled",
-      observedNodes: averages.observedNodes,
-      averages: observed,
-      evaluatedAt: evaluatedAt.toISOString()
-    };
-  }
-
-  if (cooldownActive) {
-    return {
-      policyId: policy.id,
-      shouldScale: false,
-      reason: "cooldown is active",
-      observedNodes: averages.observedNodes,
-      averages: observed,
-      evaluatedAt: evaluatedAt.toISOString()
-    };
-  }
-
-  if (knownNodes >= policy.maxNodes) {
-    return {
-      policyId: policy.id,
-      shouldScale: false,
-      reason: `max nodes reached (${knownNodes}/${policy.maxNodes})`,
-      observedNodes: averages.observedNodes,
-      averages: observed,
-      evaluatedAt: evaluatedAt.toISOString()
-    };
-  }
-
-  if (knownNodes < policy.minNodes) {
-    return {
-      policyId: policy.id,
-      shouldScale: true,
-      reason: `known nodes below minNodes (${knownNodes}/${policy.minNodes})`,
-      observedNodes: averages.observedNodes,
-      averages: observed,
-      evaluatedAt: evaluatedAt.toISOString()
-    };
-  }
-
-  if (averages.observedNodes === 0) {
-    return {
-      policyId: policy.id,
-      shouldScale: false,
-      reason: "no metrics observed in evaluation window",
-      observedNodes: averages.observedNodes,
-      averages: observed,
-      evaluatedAt: evaluatedAt.toISOString()
-    };
-  }
-
-  if (averages.cpuPercent !== null && averages.cpuPercent >= policy.thresholds.cpuPercent) {
-    return {
-      policyId: policy.id,
-      shouldScale: true,
-      reason: `cpu average ${averages.cpuPercent.toFixed(1)} >= ${policy.thresholds.cpuPercent}`,
-      observedNodes: averages.observedNodes,
-      averages: observed,
-      evaluatedAt: evaluatedAt.toISOString()
-    };
-  }
-
-  if (averages.memoryPercent !== null && averages.memoryPercent >= policy.thresholds.memoryPercent) {
-    return {
-      policyId: policy.id,
-      shouldScale: true,
-      reason: `memory average ${averages.memoryPercent.toFixed(1)} >= ${policy.thresholds.memoryPercent}`,
-      observedNodes: averages.observedNodes,
-      averages: observed,
-      evaluatedAt: evaluatedAt.toISOString()
-    };
-  }
-
-  if (
-    policy.thresholds.diskPercent !== undefined &&
-    averages.diskPercent !== null &&
-    averages.diskPercent >= policy.thresholds.diskPercent
-  ) {
-    return {
-      policyId: policy.id,
-      shouldScale: true,
-      reason: `disk average ${averages.diskPercent.toFixed(1)} >= ${policy.thresholds.diskPercent}`,
-      observedNodes: averages.observedNodes,
-      averages: observed,
-      evaluatedAt: evaluatedAt.toISOString()
-    };
-  }
-
-  return {
-    policyId: policy.id,
-    shouldScale: false,
-    reason: "thresholds are healthy",
+  const decide = (shouldScale: boolean, reason: string): ScalingDecision => ({
+    policyName: policy.name,
+    shouldScale,
+    reason,
     observedNodes: averages.observedNodes,
     averages: observed,
     evaluatedAt: evaluatedAt.toISOString()
-  };
+  });
+
+  if (!policy.enabled) {
+    return decide(false, "policy is disabled");
+  }
+
+  if (cooldownActive) {
+    return decide(false, "cooldown is active");
+  }
+
+  if (knownNodes >= policy.nodes.max) {
+    return decide(false, `max nodes reached (${knownNodes}/${policy.nodes.max})`);
+  }
+
+  if (knownNodes < policy.nodes.min) {
+    return decide(true, `known nodes below nodes.min (${knownNodes}/${policy.nodes.min})`);
+  }
+
+  // Ноль наблюдаемых нод — это «данных нет», а не «нагрузка нулевая»:
+  // масштабироваться вслепую нельзя. Добор до nodes.min отработал выше и сюда не доходит.
+  if (averages.observedNodes === 0) {
+    return decide(false, "no metrics observed in evaluation window");
+  }
+
+  const { cpu, memory, disk } = policy.scaleUp;
+
+  if (cpu !== undefined && averages.cpuPercent !== null && averages.cpuPercent >= cpu) {
+    return decide(true, `cpu average ${averages.cpuPercent.toFixed(1)} >= ${cpu}`);
+  }
+
+  if (memory !== undefined && averages.memoryPercent !== null && averages.memoryPercent >= memory) {
+    return decide(true, `memory average ${averages.memoryPercent.toFixed(1)} >= ${memory}`);
+  }
+
+  if (disk !== undefined && averages.diskPercent !== null && averages.diskPercent >= disk) {
+    return decide(true, `disk average ${averages.diskPercent.toFixed(1)} >= ${disk}`);
+  }
+
+  return decide(false, "thresholds are healthy");
 }

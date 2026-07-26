@@ -1,11 +1,11 @@
-import type { ScalingPolicy } from "@pve-vm-autoscaler/shared";
+import type { ResolvedScalingPolicy } from "@pve-vm-autoscaler/shared";
 import type { AutoscalerRepository } from "../db/repository.js";
 import { evaluateScalingDecision } from "./decision.js";
 import type { ScaleProvisioner, StructuredLogger } from "./types.js";
 
 export interface ScalingEvaluatorOptions {
   repository: AutoscalerRepository;
-  policies: ScalingPolicy[];
+  policies: ResolvedScalingPolicy[];
   provisioner: ScaleProvisioner;
   intervalMs: number;
   logger: StructuredLogger;
@@ -26,7 +26,7 @@ export class ScalingEvaluator {
       event: "scaling.evaluator.started",
       intervalMs: this.options.intervalMs,
       policyCount: this.options.policies.length,
-      policies: this.options.policies.map((policy) => policy.id)
+      policies: this.options.policies.map((policy) => policy.name)
     }, "scaling evaluator started");
 
     this.timer = setInterval(() => {
@@ -70,28 +70,28 @@ export class ScalingEvaluator {
     }
   }
 
-  private async evaluatePolicy(policy: ScalingPolicy): Promise<void> {
+  private async evaluatePolicy(policy: ResolvedScalingPolicy): Promise<void> {
     const startedAt = Date.now();
-    const labels = policy.selector.labels;
+    const labels = policy.selector;
     const [averages, knownNodes, lastEvent] = await Promise.all([
-      this.options.repository.getWindowAverages(labels, policy.evaluationWindowSeconds),
+      this.options.repository.getWindowAverages(labels, policy.window),
       // Окно свежести совпадает с окном усреднения: нода, выпавшая из среднего,
       // не должна продолжать занимать место в лимите maxNodes.
-      this.options.repository.countKnownNodes(labels, policy.evaluationWindowSeconds),
-      this.options.repository.getLastScalingEvent(policy.id, policy.cooldownSeconds)
+      this.options.repository.countKnownNodes(labels, policy.window),
+      this.options.repository.getLastScalingEvent(policy.name, policy.scaleUp.cooldown)
     ]);
 
     const decision = evaluateScalingDecision(policy, averages, knownNodes, Boolean(lastEvent));
     const decisionLog = {
       event: "scaling.decision",
-      policyId: policy.id,
+      policyName: policy.name,
       shouldScale: decision.shouldScale,
       reason: decision.reason,
       knownNodes,
       observedNodes: decision.observedNodes,
       averages: decision.averages,
-      thresholds: policy.thresholds,
-      evaluationWindowSeconds: policy.evaluationWindowSeconds,
+      thresholds: policy.scaleUp,
+      windowSeconds: policy.window,
       cooldownActive: Boolean(lastEvent),
       durationMs: Date.now() - startedAt
     };
@@ -106,7 +106,7 @@ export class ScalingEvaluator {
     this.options.logger.info({
       event: "scaling.event.created",
       scalingEventId: event.id,
-      policyId: policy.id,
+      policyName: policy.name,
       reason: decision.reason,
       status: "pending"
     }, "scaling event created");
@@ -116,7 +116,7 @@ export class ScalingEvaluator {
       this.options.logger.info({
         event: "scaling.event.running",
         scalingEventId: event.id,
-        policyId: policy.id
+        policyName: policy.name
       }, "scaling event running");
 
       const provisioned = await this.options.provisioner.createNode(policy, decision.reason);
@@ -130,7 +130,7 @@ export class ScalingEvaluator {
       this.options.logger.info({
         event: "scaling.event.completed",
         scalingEventId: event.id,
-        policyId: policy.id,
+        policyName: policy.name,
         status,
         vmId: provisioned.vmId,
         proxmoxTaskId: provisioned.taskId
@@ -140,7 +140,7 @@ export class ScalingEvaluator {
       this.options.logger.error({
         event: "scaling.event.failed",
         scalingEventId: event.id,
-        policyId: policy.id,
+        policyName: policy.name,
         error
       }, "scaling event failed");
     }

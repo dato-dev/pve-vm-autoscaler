@@ -14,7 +14,9 @@
     "db:migrate": "tsx apps/server/src/db/migrate.ts",
     "test": "vitest run",
     "lint": "eslint .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "policy:validate": "tsx apps/server/src/cli/policy.ts validate",
+    "policy:convert": "tsx apps/server/src/cli/policy.ts convert"
   },
   "dependencies": {},
   "devDependencies": {
