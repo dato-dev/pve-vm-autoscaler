@@ -13,14 +13,21 @@
     "dev:agent": "tsx apps/agent/src/index.ts",
     "db:migrate": "tsx apps/server/src/db/migrate.ts",
     "test": "vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "prepare": "husky"
   },
   "dependencies": {},
   "devDependencies": {
+    "@commitlint/cli": "^19.6.0",
+    "@commitlint/config-conventional": "^19.6.0",
     "@eslint/js": "latest",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@types/node": "latest",
     "@types/pg": "latest",
     "eslint": "latest",
+    "husky": "^9.1.7",
+    "semantic-release": "^24.2.0",
     "tsx": "latest",
     "typescript": "latest",
     "typescript-eslint": "latest",

@@ -1,5 +1,7 @@
 # pve-vm-autoscaler
 
+[![CI](https://github.com/dato-dev/pve-vm-autoscaler/actions/workflows/ci.yml/badge.svg)](https://github.com/dato-dev/pve-vm-autoscaler/actions/workflows/ci.yml)
+
 `pve-vm-autoscaler` — MVP autoscaler для Proxmox. Агент запускается внутри flexible VM, отправляет CPU/RAM/disk метрики на сервер, сервер хранит временные ряды в TimescaleDB и создаёт новую VM через Proxmox API, если нагрузка держится выше заданного порога.
 
 ## Архитектура
@@ -188,9 +190,26 @@ PROXMOX_TOKEN_SECRET=...
 ## Проверки
 
 ```bash
+npm install
 npm run build
 npm test
 npm run lint
 ```
 
-В текущем окружении Cursor CLI доступен `node`, но `npm` может отсутствовать в PATH. Если команда `npm` не найдена, запустите проверки из терминала, где установлен Node.js/npm.
+Те же три шага выполняет CI на каждый push и pull request.
+
+## Коммиты и релизы
+
+Проект использует [Conventional Commits](https://www.conventionalcommits.org/) и semantic-release:
+версия и `CHANGELOG.md` формируются из сообщений коммитов, вручную их править не нужно.
+
+```
+feat(policy): добавить поддержку YAML
+fix(agent): считать память по MemAvailable
+docs(readme): описать выбор источника метрик
+```
+
+`feat` поднимает minor, `fix` и `perf` — patch, остальные типы релиз не выпускают.
+Формат проверяется локально git-хуком и в CI. Полная конвенция — в [CLAUDE.md](CLAUDE.md), п. 1.5.
+
+После `npm install` активируется husky-хук, который проверит сообщение при `git commit`.
