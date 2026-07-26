@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Все ветки, а не только main: работа идёт в ветках (CLAUDE.md, п. 1.5),
+    # и проверять их надо до вливания. Шаблон веток не совпадает с тегами,
+    # поэтому тег, который ставит semantic-release, лишний прогон не запускает.
+    branches: ["**"]
   pull_request:
 
 # По умолчанию — только чтение. Право на запись выдаётся точечно job'у release.
@@ -69,8 +72,10 @@ jobs:
           if [ "$EVENT" = "pull_request" ]; then
             FROM="$PR_BASE"
           elif [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = "$EMPTY_SHA" ]; then
-            # Первый push в ветку: предыдущего состояния нет, проверяем последний коммит.
-            FROM="$(git rev-parse HEAD~1 2>/dev/null || echo '')"
+            # Первый push новой ветки: предыдущего состояния нет. Берём точку
+            # ветвления от main, иначе проверился бы только последний коммит,
+            # а в ветке их обычно несколько.
+            FROM="$(git merge-base origin/main HEAD 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || echo '')"
           else
             FROM="$PUSH_BEFORE"
           fi
