@@ -1,0 +1,44 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: autoscaler
+      POSTGRES_USER: autoscaler
+      POSTGRES_PASSWORD: autoscaler
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoscaler -d autoscaler"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build:
+      context: .
+      target: server
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      DATABASE_URL: postgres://autoscaler:autoscaler@timescaledb:5432/autoscaler
+      POLICY_FILE: /app/infra/policy.example.json
+      # Значения подставляются из .env (docker compose читает его автоматически).
+      # Секреты в этот файл не пишем — он под git, .env в .gitignore.
+      AGENT_TOKEN: ${AGENT_TOKEN:?AGENT_TOKEN is required, see .env.example}
+      # Безопасный дефолт: без явного PROXMOX_DRY_RUN=false реальные VM не создаются.
+      PROXMOX_DRY_RUN: ${PROXMOX_DRY_RUN:-true}
+      PROXMOX_BASE_URL: ${PROXMOX_BASE_URL:-}
+      PROXMOX_TOKEN_ID: ${PROXMOX_TOKEN_ID:-}
+      PROXMOX_TOKEN_SECRET: ${PROXMOX_TOKEN_SECRET:-}
+      PROXMOX_TLS_REJECT_UNAUTHORIZED: ${PROXMOX_TLS_REJECT_UNAUTHORIZED:-true}
+    ports:
+      - "8080:8080"
+
+volumes:
+  timescaledb-data:

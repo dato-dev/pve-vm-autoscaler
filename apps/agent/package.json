@@ -1,0 +1,15 @@
+{
+  "name": "@pve-vm-autoscaler/agent",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@pve-vm-autoscaler/shared": "0.1.0",
+    "dotenv": "latest"
+  },
+  "devDependencies": {}
+}

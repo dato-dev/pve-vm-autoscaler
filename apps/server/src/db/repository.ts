@@ -1,0 +1,198 @@
+import { randomUUID } from "node:crypto";
+import { labelsMatch, type MetricSnapshot, type NodeLabels, type ScalingDecision } from "@pve-vm-autoscaler/shared";
+import type { DatabasePool } from "./pool.js";
+
+export interface WindowAverages {
+  observedNodes: number;
+  cpuPercent: number | null;
+  memoryPercent: number | null;
+  diskPercent: number | null;
+}
+
+export interface ScalingEventRecord {
+  id: string;
+  policyId: string;
+  status: string;
+  reason: string;
+  proxmoxTaskId?: string;
+  createdVmId?: number;
+}
+
+export class AutoscalerRepository {
+  constructor(private readonly pool: DatabasePool) {}
+
+  async saveMetric(snapshot: MetricSnapshot): Promise<void> {
+    await this.pool.query("BEGIN");
+    try {
+      await this.pool.query(
+        `
+        INSERT INTO nodes (node_id, hostname, agent_version, labels, last_seen_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, now())
+        ON CONFLICT (node_id) DO UPDATE SET
+          hostname = EXCLUDED.hostname,
+          agent_version = EXCLUDED.agent_version,
+          labels = EXCLUDED.labels,
+          last_seen_at = EXCLUDED.last_seen_at,
+          updated_at = now()
+        `,
+        [
+          snapshot.node.nodeId,
+          snapshot.node.hostname,
+          snapshot.node.agentVersion ?? null,
+          JSON.stringify(snapshot.node.labels),
+          snapshot.collectedAt
+        ]
+      );
+
+      await this.pool.query(
+        `
+        INSERT INTO metrics (
+          time,
+          node_id,
+          cpu_percent,
+          memory_percent,
+          memory_total_bytes,
+          memory_used_bytes,
+          disk_percent,
+          disk_total_bytes,
+          disk_used_bytes,
+          disk_mount_point,
+          uptime_seconds,
+          raw
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (time, node_id) DO NOTHING
+        `,
+        [
+          snapshot.collectedAt,
+          snapshot.node.nodeId,
+          snapshot.cpu.usagePercent,
+          snapshot.memory.usagePercent,
+          snapshot.memory.totalBytes,
+          snapshot.memory.usedBytes,
+          snapshot.disk.usagePercent,
+          snapshot.disk.totalBytes,
+          snapshot.disk.usedBytes,
+          snapshot.disk.mountPoint,
+          snapshot.uptimeSeconds,
+          JSON.stringify(snapshot)
+        ]
+      );
+
+      await this.pool.query("COMMIT");
+    } catch (error) {
+      await this.pool.query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async getWindowAverages(labels: NodeLabels, windowSeconds: number): Promise<WindowAverages> {
+    const result = await this.pool.query<{
+      observed_nodes: string;
+      cpu_percent: number | null;
+      memory_percent: number | null;
+      disk_percent: number | null;
+    }>(
+      `
+      SELECT
+        count(DISTINCT metrics.node_id) AS observed_nodes,
+        avg(cpu_percent) AS cpu_percent,
+        avg(memory_percent) AS memory_percent,
+        avg(disk_percent) AS disk_percent
+      FROM metrics
+      JOIN nodes ON nodes.node_id = metrics.node_id
+      WHERE metrics.time >= now() - ($1::int * interval '1 second')
+        AND nodes.labels @> $2::jsonb
+      `,
+      [windowSeconds, JSON.stringify(labels)]
+    );
+
+    const row = result.rows[0];
+    return {
+      observedNodes: Number(row?.observed_nodes ?? 0),
+      cpuPercent: row?.cpu_percent === null || row?.cpu_percent === undefined ? null : Number(row.cpu_percent),
+      memoryPercent: row?.memory_percent === null || row?.memory_percent === undefined ? null : Number(row.memory_percent),
+      diskPercent: row?.disk_percent === null || row?.disk_percent === undefined ? null : Number(row.disk_percent)
+    };
+  }
+
+  async countKnownNodes(labels: NodeLabels): Promise<number> {
+    const result = await this.pool.query<{ node_id: string; labels: NodeLabels }>(
+      "SELECT node_id, labels FROM nodes"
+    );
+
+    return result.rows.filter((row) => labelsMatch(labels, row.labels)).length;
+  }
+
+  async getLastScalingEvent(policyId: string, cooldownSeconds: number): Promise<ScalingEventRecord | null> {
+    const result = await this.pool.query<{
+      id: string;
+      policy_id: string;
+      status: string;
+      reason: string;
+      proxmox_task_id: string | null;
+      created_vm_id: number | null;
+    }>(
+      `
+      SELECT id, policy_id, status, reason, proxmox_task_id, created_vm_id
+      FROM scaling_events
+      WHERE policy_id = $1
+        AND created_at >= now() - ($2::int * interval '1 second')
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [policyId, cooldownSeconds]
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      policyId: row.policy_id,
+      status: row.status,
+      reason: row.reason,
+      proxmoxTaskId: row.proxmox_task_id ?? undefined,
+      createdVmId: row.created_vm_id ?? undefined
+    };
+  }
+
+  async createScalingEvent(decision: ScalingDecision, status: string): Promise<ScalingEventRecord> {
+    const id = randomUUID();
+    await this.pool.query(
+      `
+      INSERT INTO scaling_events (id, policy_id, status, reason, decision)
+      VALUES ($1, $2, $3, $4, $5)
+      `,
+      [id, decision.policyId, status, decision.reason, JSON.stringify(decision)]
+    );
+
+    return {
+      id,
+      policyId: decision.policyId,
+      status,
+      reason: decision.reason
+    };
+  }
+
+  async updateScalingEvent(
+    id: string,
+    status: string,
+    proxmoxTaskId?: string,
+    createdVmId?: number
+  ): Promise<void> {
+    await this.pool.query(
+      `
+      UPDATE scaling_events
+      SET status = $2,
+          proxmox_task_id = COALESCE($3, proxmox_task_id),
+          created_vm_id = COALESCE($4, created_vm_id),
+          completed_at = CASE WHEN $2 IN ('succeeded', 'failed', 'dry_run') THEN now() ELSE completed_at END
+      WHERE id = $1
+      `,
+      [id, status, proxmoxTaskId ?? null, createdVmId ?? null]
+    );
+  }
+}

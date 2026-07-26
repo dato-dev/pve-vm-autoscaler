@@ -1,0 +1,29 @@
+{
+  "name": "pve-vm-autoscaler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "dev:server": "tsx apps/server/src/index.ts",
+    "dev:agent": "tsx apps/agent/src/index.ts",
+    "db:migrate": "tsx apps/server/src/db/migrate.ts",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@types/node": "latest",
+    "@types/pg": "latest",
+    "eslint": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vitest": "latest"
+  }
+}

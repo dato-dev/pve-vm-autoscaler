@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/proxmox" },
+    { "path": "apps/server" },
+    { "path": "apps/agent" }
+  ]
+}

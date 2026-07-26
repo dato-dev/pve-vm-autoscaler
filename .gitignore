@@ -1,0 +1,15 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+coverage
+*.log
+*.tsbuildinfo
+
+# macOS
+.DS_Store
+
+# Черновые схемы. Архитектура описывается в markdown через mermaid,
+# бинарные картинки в репозиторий не кладём — их не видно в диффе.
+*.svg

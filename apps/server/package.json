@@ -1,0 +1,19 @@
+{
+  "name": "@pve-vm-autoscaler/server",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "db:migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@pve-vm-autoscaler/proxmox": "0.1.0",
+    "@pve-vm-autoscaler/shared": "0.1.0",
+    "dotenv": "latest",
+    "fastify": "latest",
+    "pg": "latest"
+  },
+  "devDependencies": {}
+}
