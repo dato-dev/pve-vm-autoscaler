@@ -163,6 +163,29 @@ journalctl -u pve-vm-autoscaler-agent -f
 
 Если в логах агента есть `metrics sent`, сервер получает метрики. Если VM не достучалась до сервера, проверь firewall на машине с сервером и разреши входящий TCP `8080` в LAN.
 
+## HTTP API
+
+### `GET /health`
+
+Без аутентификации.
+
+```json
+{"ok":true,"service":"pve-vm-autoscaler-server"}
+```
+
+### `POST /v1/metrics`
+
+Приём снимка метрик от агента. Требует заголовок `Authorization: Bearer <AGENT_TOKEN>`.
+
+| Код | Когда | Тело |
+|---|---|---|
+| `202` | Снимок принят и записан | `{"accepted":true}` |
+| `400` | Payload не прошёл валидацию | `{"error":"invalid_metrics_payload","issues":[{"path":"cpu.usagePercent","message":"..."}]}` |
+| `401` | Токен отсутствует или неверен | `{"error":"unauthorized"}` |
+
+`400` возвращается с перечнем полей, не прошедших проверку, — это ошибка клиента,
+и повторять такой запрос бессмысленно. Агент уходит в backoff только на `5xx` и сетевых сбоях.
+
 ## Конфигурация policy
 
 Пример находится в `infra/policy.example.json`. Главные параметры:
