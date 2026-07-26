@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/dato-dev/pve-vm-autoscaler/compare/v1.0.1...v1.0.2) (2026-07-26)
+
+
+### Bug Fixes
+
+* **agent:** считать память по MemAvailable вместо MemFree ([462a0ac](https://github.com/dato-dev/pve-vm-autoscaler/commit/462a0acf6164296b8e46e7dcb9bf97bc57fba209))
+
 ## [1.0.1](https://github.com/dato-dev/pve-vm-autoscaler/compare/v1.0.0...v1.0.1) (2026-07-26)
 
 
