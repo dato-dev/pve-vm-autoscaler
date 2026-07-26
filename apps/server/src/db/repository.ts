@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { labelsMatch, type MetricSnapshot, type NodeLabels, type ScalingDecision } from "@pve-vm-autoscaler/shared";
+import type { MetricSnapshot, NodeLabels, ScalingDecision } from "@pve-vm-autoscaler/shared";
 import type { DatabasePool } from "./pool.js";
 
 export interface WindowAverages {
@@ -139,12 +139,38 @@ export class AutoscalerRepository {
     };
   }
 
-  async countKnownNodes(labels: NodeLabels): Promise<number> {
-    const result = await this.pool.query<{ node_id: string; labels: NodeLabels }>(
-      "SELECT node_id, labels FROM nodes"
+  /**
+   * Считает ноды, которые подходят под селектор политики и продолжают присылать метрики.
+   *
+   * Фильтрация выполняется в SQL: `labels @> $1::jsonb` использует GIN-индекс
+   * `nodes_labels_idx`, тогда как прежняя реализация выгружала всю таблицу `nodes`
+   * в память и фильтровала в JS.
+   *
+   * Порог свежести намеренно равен окну оценки нагрузки. Иначе счётчик и средние
+   * расходятся: отвалившаяся нода перестаёт давать сэмплы и уходит из среднего,
+   * но продолжает занимать место в лимите `maxNodes`. Отказ ноды в этом случае
+   * подавляет масштабирование вместо того, чтобы вызывать его.
+   *
+   * Осмысленно только при окне, заметно большем интервала отправки метрик агентом;
+   * при слишком коротком окне и средние, и этот счётчик одинаково нестабильны.
+   *
+   * @param labels Метки из `selector` политики. Пустой объект совпадает со всеми нодами.
+   * @param freshWithinSeconds Окно свежести в секундах: нода считается живой,
+   *   если её `last_seen_at` попадает в этот интервал.
+   * @returns Количество живых нод, подходящих под селектор.
+   */
+  async countKnownNodes(labels: NodeLabels, freshWithinSeconds: number): Promise<number> {
+    const result = await this.pool.query<{ known_nodes: string }>(
+      `
+      SELECT count(*) AS known_nodes
+      FROM nodes
+      WHERE labels @> $1::jsonb
+        AND last_seen_at >= now() - ($2::int * interval '1 second')
+      `,
+      [JSON.stringify(labels), freshWithinSeconds]
     );
 
-    return result.rows.filter((row) => labelsMatch(labels, row.labels)).length;
+    return Number(result.rows[0]?.known_nodes ?? 0);
   }
 
   async getLastScalingEvent(policyId: string, cooldownSeconds: number): Promise<ScalingEventRecord | null> {

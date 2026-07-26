@@ -8,6 +8,7 @@ interface RecordedQuery {
   /** Номер соединения; 0 означает запрос напрямую через пул, минуя connect(). */
   connectionId: number;
   sql: string;
+  values: unknown[];
 }
 
 /**
@@ -25,19 +26,22 @@ class FakePool {
   /** SQL-фрагмент, на котором запрос должен упасть, и ошибка, которую он бросит. */
   failOn?: { match: string; error: Error };
 
+  /** Строки, которые вернёт пул на запрос, содержащий указанный SQL-фрагмент. */
+  respondWith: { match: string; rows: unknown[] }[] = [];
+
   async connect(): Promise<{
-    query: (sql: string, values?: unknown[]) => Promise<{ rows: never[] }>;
+    query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[] }>;
     release: () => void;
   }> {
     const connectionId = this.nextConnectionId++;
 
     return {
-      query: async (sql: string) => {
-        this.queries.push({ connectionId, sql });
+      query: async (sql: string, values: unknown[] = []) => {
+        this.queries.push({ connectionId, sql, values });
         if (this.failOn && sql.includes(this.failOn.match)) {
           throw this.failOn.error;
         }
-        return { rows: [] as never[] };
+        return { rows: this.rowsFor(sql) };
       },
       release: () => {
         this.releasedConnections.push(connectionId);
@@ -45,10 +49,17 @@ class FakePool {
     };
   }
 
-  /** Прямой вызов мимо connect() — сюда уходили запросы до исправления. */
-  async query(sql: string): Promise<{ rows: never[] }> {
-    this.queries.push({ connectionId: 0, sql });
-    return { rows: [] as never[] };
+  /** Прямой вызов мимо connect(): так работают методы без транзакции. */
+  async query(sql: string, values: unknown[] = []): Promise<{ rows: unknown[] }> {
+    this.queries.push({ connectionId: 0, sql, values });
+    if (this.failOn && sql.includes(this.failOn.match)) {
+      throw this.failOn.error;
+    }
+    return { rows: this.rowsFor(sql) };
+  }
+
+  private rowsFor(sql: string): unknown[] {
+    return this.respondWith.find((r) => sql.includes(r.match))?.rows ?? [];
   }
 
   /** Запросы транзакции: BEGIN/COMMIT/ROLLBACK и оба INSERT. */
@@ -145,5 +156,71 @@ describe("AutoscalerRepository.saveMetric", () => {
 
     await expect(buildRepository(pool).saveMetric(buildSnapshot())).rejects.toThrow(original);
     expect(pool.releasedConnections).toEqual([1]);
+  });
+});
+
+describe("AutoscalerRepository.countKnownNodes", () => {
+  /** Единственный запрос, отправленный в этом тесте. */
+  function onlyQuery(pool: FakePool): RecordedQuery {
+    expect(pool.queries).toHaveLength(1);
+    const query = pool.queries[0];
+    if (!query) {
+      throw new Error("ожидался ровно один запрос");
+    }
+    return query;
+  }
+
+  it("фильтрует по меткам и свежести в SQL, а не в памяти", async () => {
+    const pool = new FakePool();
+    pool.respondWith = [{ match: "count(*)", rows: [{ known_nodes: "3" }] }];
+
+    const count = await buildRepository(pool).countKnownNodes({ role: "worker" }, 120);
+
+    const query = onlyQuery(pool);
+    // Регрессия: раньше метод делал `SELECT node_id, labels FROM nodes` и фильтровал
+    // результат в JS — вся таблица уезжала в память мимо GIN-индекса.
+    expect(query.sql).toContain("labels @> $1::jsonb");
+    expect(query.sql).toContain("last_seen_at >= now()");
+    expect(query.values).toEqual([JSON.stringify({ role: "worker" }), 120]);
+    expect(count).toBe(3);
+  });
+
+  it("не считает ноды, замолчавшие дольше окна", async () => {
+    // Живых нод нет: все last_seen_at вне окна, count(*) вернёт 0.
+    const pool = new FakePool();
+    pool.respondWith = [{ match: "count(*)", rows: [{ known_nodes: "0" }] }];
+
+    const count = await buildRepository(pool).countKnownNodes({ role: "worker" }, 60);
+
+    expect(count).toBe(0);
+    expect(onlyQuery(pool).values[1]).toBe(60);
+  });
+
+  it("пустой селектор превращается в jsonb {} и совпадает со всеми нодами", async () => {
+    const pool = new FakePool();
+    pool.respondWith = [{ match: "count(*)", rows: [{ known_nodes: "7" }] }];
+
+    const count = await buildRepository(pool).countKnownNodes({}, 300);
+
+    expect(onlyQuery(pool).values[0]).toBe("{}");
+    expect(count).toBe(7);
+  });
+
+  it("возвращает 0, если строк нет вовсе", async () => {
+    // Защита от падения на пустом result.rows — count(*) всегда даёт строку,
+    // но полагаться на это без проверки нельзя (noUncheckedIndexedAccess).
+    const pool = new FakePool();
+
+    await expect(buildRepository(pool).countKnownNodes({ role: "worker" }, 120)).resolves.toBe(0);
+  });
+
+  it("пробрасывает ошибку базы, а не подменяет её нулём", async () => {
+    const pool = new FakePool();
+    const failure = new Error("connection terminated");
+    pool.failOn = { match: "count(*)", error: failure };
+
+    await expect(buildRepository(pool).countKnownNodes({ role: "worker" }, 120)).rejects.toThrow(
+      failure
+    );
   });
 });

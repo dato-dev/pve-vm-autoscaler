@@ -75,7 +75,9 @@ export class ScalingEvaluator {
     const labels = policy.selector.labels;
     const [averages, knownNodes, lastEvent] = await Promise.all([
       this.options.repository.getWindowAverages(labels, policy.evaluationWindowSeconds),
-      this.options.repository.countKnownNodes(labels),
+      // Окно свежести совпадает с окном усреднения: нода, выпавшая из среднего,
+      // не должна продолжать занимать место в лимите maxNodes.
+      this.options.repository.countKnownNodes(labels, policy.evaluationWindowSeconds),
       this.options.repository.getLastScalingEvent(policy.id, policy.cooldownSeconds)
     ]);
 
